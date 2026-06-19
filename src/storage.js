@@ -27,8 +27,12 @@ const localStore = {
 };
 
 // ── Cloud store: one row per user in `training_state`, guarded by RLS ──
+// NOTE: callers use the (key, value) convention from the local-storage shim
+// (see window.storage in main.jsx). The cloud store only needs the value —
+// it's a single row per user — so it reads whichever arg is the actual
+// payload, accepting either get(key) / set(key, value) or get() / set(value).
 const cloudStore = {
-  async get() {
+  async get(_key) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     const { data, error } = await supabase
@@ -39,7 +43,8 @@ const cloudStore = {
     if (error) throw error;
     return data ? { value: JSON.stringify(data.data) } : null;
   },
-  async set(value) {
+  async set(keyOrValue, maybeValue) {
+    const value = maybeValue !== undefined ? maybeValue : keyOrValue;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("not signed in");
     const { error } = await supabase
