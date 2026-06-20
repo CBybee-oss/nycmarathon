@@ -923,7 +923,14 @@ function defaultStrengthSlots(week, slotsByDay) {
 // ───────────────────────────────────────────────────────────────
 
 function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtPace, fmtTime, parsePace, parseTime, MP_SEC }) {
-  const [dist, setDist] = useState(existing ? String(existing.dist ?? "") : String(planned.m ?? ""));
+  // distDigits holds RAW digits only (e.g. "0620"), right-to-left entry,
+  // always rendered as exactly 2 digits before + 2 after the decimal.
+  const numToDistDigits = (n) => {
+    if (!n && n !== 0) return "";
+    return String(Math.round(n * 100)).padStart(4, "0").slice(-4);
+  };
+  const initialDistDigits = existing ? numToDistDigits(existing.dist) : numToDistDigits(planned.m);
+  const [distDigits, setDistDigits] = useState(initialDistDigits);
   const [hr, setHr] = useState(existing && existing.hr ? String(existing.hr) : "");
   const [paceStr, setPaceStr] = useState(existing && existing.paceSec ? fmtPace(existing.paceSec) : "");
   // timeDigits holds RAW digits only (e.g. "14543"), right-to-left entry.
@@ -931,6 +938,17 @@ function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtP
   const initialTimeDigits = existing && existing.timeSec ? fmtTime(existing.timeSec).replace(/:/g, "") : "";
   const [timeDigits, setTimeDigits] = useState(initialTimeDigits);
   const [lastEdited, setLastEdited] = useState(null); // 'pace' | 'time'
+
+  // Format raw digits "0620" → "06.20". Fixed 2-before / 2-after decimal —
+  // pads on the left so the field always shows a complete, unambiguous value.
+  const digitsToDist = (digits) => {
+    const d = digits.replace(/\D/g, "").slice(0, 4).padStart(4, "0"); // cap at 99.99 mi
+    const whole = d.slice(0, 2);
+    const frac = d.slice(2);
+    return `${whole}.${frac}`;
+  };
+
+  const dist = distDigits ? digitsToDist(distDigits) : "";
 
   // Format raw digits "14543" → "1:45:43". Always groups from the right in
   // pairs of two (SS, then MM, then any remaining digits as H).
@@ -954,13 +972,9 @@ function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtP
 
   // Auto-derive the field the user didn't just touch, when we have distance + one of pace/time.
   const onDist = (raw) => {
-    // Allow only digits and a single decimal point — keeps a plain numeric
-    // keyboard usable on iOS (text + inputMode=decimal) without stray chars.
-    let v = raw.replace(/[^0-9.]/g, "");
-    const firstDot = v.indexOf(".");
-    if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, "");
-    setDist(v);
-    const d = parseFloat(v) || 0;
+    const digits = raw.replace(/\D/g, "").slice(0, 4);
+    setDistDigits(digits);
+    const d = parseFloat(digits ? digitsToDist(digits) : "0") || 0;
     if (d > 0) {
       if (lastEdited === "pace" && parsePace(paceStr) > 0) {
         setTimeDigits(fmtTime(parsePace(paceStr) * d).replace(/:/g, ""));
@@ -1013,8 +1027,7 @@ function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtP
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div>
             <label style={label}>DISTANCE (MI)</label>
-            <input type="text" inputMode="decimal" value={dist} onChange={(e) => onDist(e.target.value)} style={field} autoFocus />
-          </div>
+            <input type="text" inputMode="numeric" value={dist} onChange={(e) => onDist(e.target.value)} placeholder="00.00" style={field} autoFocus />          </div>
           <div>
             <label style={label}>AVG HR (BPM)</label>
             <input type="number" inputMode="numeric" value={hr} onChange={(e) => setHr(e.target.value)} placeholder="—" style={field} />
