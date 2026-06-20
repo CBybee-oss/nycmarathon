@@ -926,30 +926,59 @@ function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtP
   const [dist, setDist] = useState(existing ? String(existing.dist ?? "") : String(planned.m ?? ""));
   const [hr, setHr] = useState(existing && existing.hr ? String(existing.hr) : "");
   const [paceStr, setPaceStr] = useState(existing && existing.paceSec ? fmtPace(existing.paceSec) : "");
-  const [timeStr, setTimeStr] = useState(existing && existing.timeSec ? fmtTime(existing.timeSec) : "");
+  // timeDigits holds RAW digits only (e.g. "14543"), right-to-left entry.
+  // timeStr (below) is the colon-formatted display/parse value derived from it.
+  const initialTimeDigits = existing && existing.timeSec ? fmtTime(existing.timeSec).replace(/:/g, "") : "";
+  const [timeDigits, setTimeDigits] = useState(initialTimeDigits);
   const [lastEdited, setLastEdited] = useState(null); // 'pace' | 'time'
+
+  // Format raw digits "14543" → "1:45:43". Always groups from the right in
+  // pairs of two (SS, then MM, then any remaining digits as H).
+  const digitsToTime = (digits) => {
+    const d = digits.replace(/\D/g, "").slice(0, 6); // cap at H:MM:SS = 6 digits
+    if (!d) return "";
+    if (d.length <= 2) return d; // still typing seconds, show raw
+    const ss = d.slice(-2);
+    const rest = d.slice(0, -2);
+    if (rest.length <= 2) return `${rest}:${ss}`;
+    const mm = rest.slice(-2);
+    const h = rest.slice(0, -2);
+    return `${h}:${mm}:${ss}`;
+  };
+
+  const timeStr = digitsToTime(timeDigits);
 
   const distNum = parseFloat(dist) || 0;
   const paceSec = parsePace(paceStr);
   const timeSec = parseTime(timeStr);
 
   // Auto-derive the field the user didn't just touch, when we have distance + one of pace/time.
-  const onDist = (v) => {
+  const onDist = (raw) => {
+    // Allow only digits and a single decimal point — keeps a plain numeric
+    // keyboard usable on iOS (text + inputMode=decimal) without stray chars.
+    let v = raw.replace(/[^0-9.]/g, "");
+    const firstDot = v.indexOf(".");
+    if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, "");
     setDist(v);
     const d = parseFloat(v) || 0;
     if (d > 0) {
-      if (lastEdited === "pace" && parsePace(paceStr) > 0) setTimeStr(fmtTime(parsePace(paceStr) * d));
-      else if (lastEdited === "time" && parseTime(timeStr) > 0) setPaceStr(fmtPace(parseTime(timeStr) / d));
+      if (lastEdited === "pace" && parsePace(paceStr) > 0) {
+        setTimeDigits(fmtTime(parsePace(paceStr) * d).replace(/:/g, ""));
+      } else if (lastEdited === "time" && parseTime(timeStr) > 0) {
+        setPaceStr(fmtPace(parseTime(timeStr) / d));
+      }
     }
   };
   const onPace = (v) => {
     setPaceStr(v); setLastEdited("pace");
     const p = parsePace(v);
-    if (p > 0 && distNum > 0) setTimeStr(fmtTime(p * distNum));
+    if (p > 0 && distNum > 0) setTimeDigits(fmtTime(p * distNum).replace(/:/g, ""));
   };
-  const onTime = (v) => {
-    setTimeStr(v); setLastEdited("time");
-    const t = parseTime(v);
+  const onTime = (raw) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 6);
+    setTimeDigits(digits); setLastEdited("time");
+    const formatted = digitsToTime(digits);
+    const t = parseTime(formatted);
     if (t > 0 && distNum > 0) setPaceStr(fmtPace(t / distNum));
   };
 
@@ -984,7 +1013,7 @@ function LogForm({ planned, existing, onSave, onClear, onClose, S, display, fmtP
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div>
             <label style={label}>DISTANCE (MI)</label>
-            <input type="number" inputMode="decimal" step="0.01" value={dist} onChange={(e) => onDist(e.target.value)} style={field} autoFocus />
+            <input type="text" inputMode="decimal" value={dist} onChange={(e) => onDist(e.target.value)} style={field} autoFocus />
           </div>
           <div>
             <label style={label}>AVG HR (BPM)</label>
