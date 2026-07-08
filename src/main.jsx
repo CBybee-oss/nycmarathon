@@ -98,3 +98,45 @@ function Root() {
   useEffect(() => {
     if (!cloudEnabled) return;
     getSession().then((s) => {
+      setAuthed(!!s);
+      setReady(true);
+    });
+    const unsubscribe = onAuthChange((session, event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecovery(true);
+        setSettingPassword(true);
+      }
+      setAuthed(!!session);
+      setReady(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  if (!ready) {
+    return (
+      <div style={{ ...mono, minHeight: "100vh", background: "#080808", color: "#71717a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        LOADING…
+      </div>
+    );
+  }
+
+  if (!authed) return <SignIn />;
+
+  if (settingPassword) {
+    return <SetPassword onDone={() => { setSettingPassword(false); setRecovery(false); }} />;
+  }
+
+  return (
+    <div>
+      {cloudEnabled && (
+        <button onClick={() => signOut()}
+          style={{ ...mono, position: "fixed", top: 10, right: 10, zIndex: 1000, fontSize: 10, padding: "6px 10px", background: "#0d0d0d", color: "#71717a", border: "1px solid #27272a", cursor: "pointer" }}>
+          SIGN OUT
+        </button>
+      )}
+      <NYCMarathonPlan />
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<Root />);
