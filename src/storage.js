@@ -58,19 +58,16 @@ const cloudStore = {
 // Unified interface the app's window.storage shim wraps.
 export const store = cloudEnabled ? cloudStore : localStore;
 
-// ── Auth helpers (magic-link / email OTP) ──
+// ── Auth helpers (email + password) ──
 export async function getSession() {
   if (!cloudEnabled) return null;
   const { data: { session } } = await supabase.auth.getSession();
   return session;
 }
 
-export async function sendMagicLink(email) {
+export async function signInWithPassword(email, password) {
   if (!cloudEnabled) throw new Error("cloud not configured");
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin },
-  });
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
 }
 
@@ -78,8 +75,14 @@ export async function signOut() {
   if (cloudEnabled) await supabase.auth.signOut();
 }
 
+export async function updatePassword(password) {
+  if (!cloudEnabled) throw new Error("cloud not configured");
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export function onAuthChange(cb) {
   if (!cloudEnabled) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => cb(session));
+  const { data } = supabase.auth.onAuthStateChange((event, session) => cb(session, event));
   return () => data.subscription.unsubscribe();
 }
