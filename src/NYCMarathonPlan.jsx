@@ -2409,4 +2409,3 @@ export default function NYCMarathonPlan() {
     </div>
   );
 }
-
