@@ -601,6 +601,18 @@ function buildWeek(i, ovr) {
   let days = base.days.map((d) => ({ ...d, baseM: d.m, n: d.n }));
 
   const isRun = (d) => d.t !== "rest" && d.t !== "race";
+
+  // ── deleted days: user explicitly skipped a scheduled run (distinct from
+  // pinning miles to a low number) — converts the day to rest, freeing it
+  // from week-total redistribution entirely. Reversible via RESTORE. ──
+  const deleted = o.deleted || {};
+  days.forEach((d, di) => {
+    if (isRun(d) && deleted[di]) {
+      days[di] = { d: d.d, t: "rest", l: "Rest", m: 0, baseM: d.baseM, p: "—",
+        x: "Rest. This run was deleted.", n: [] };
+    }
+  });
+
   const baseRunCount = days.filter(isRun).length;
   const targetDays = o.days != null ? clamp(o.days, 2, 6) : baseRunCount;
 
@@ -1295,6 +1307,24 @@ export default function NYCMarathonPlan() {
     });
   };
   const dayPinned = (id, origIdx) => ((ovr[id] || {}).miles || {})[origIdx] != null;
+  const setDeleted = (id, origIdx, val) => {
+    setOvr((p) => {
+      const cur = { ...(p[id] || {}) };
+      const deleted = { ...(cur.deleted || {}) };
+      if (val) deleted[origIdx] = true; else delete deleted[origIdx];
+      if (Object.keys(deleted).length) cur.deleted = deleted; else delete cur.deleted;
+      // clear any mile pin on this day too — it's either gone or fresh again
+      if (cur.miles && cur.miles[origIdx] != null) {
+        const m = { ...cur.miles };
+        delete m[origIdx];
+        if (Object.keys(m).length) cur.miles = m; else delete cur.miles;
+      }
+      const c = { ...p };
+      if (Object.keys(cur).length) c[id] = cur; else delete c[id];
+      return c;
+    });
+  };
+  const dayDeleted = (id, origIdx) => !!((ovr[id] || {}).deleted || {})[origIdx];
 
   // ── strength attached to days: ovr[weekId].strength = { origIdx: [exerciseId,...] } ──
   // ── strength is keyed by weekday SLOT (0-6), independent of runs so it works on rest days ──
@@ -1958,9 +1988,23 @@ export default function NYCMarathonPlan() {
                             style={{ ...S.display, fontSize: 14, padding: "7px 14px", background: "transparent", color: "#f59e0b", border: "1px solid #f59e0b66" }}>
                             MOVE
                           </button>
+                          {d.t !== "race" && (
+                            <button className="hoverlift" onClick={() => { setDeleted(week.id, day.i, true); setDay(null); }}
+                              style={{ ...S.display, fontSize: 14, padding: "7px 14px", background: "transparent", color: "#f43f5e", border: "1px solid #f43f5e66" }}>
+                              DELETE
+                            </button>
+                          )}
                           <button className="hoverlift" onClick={() => setLogFor({ weekId: week.id, origIdx: day.i })}
                             style={{ ...S.display, fontSize: 15, padding: "7px 18px", background: dDone ? "#4ade80" : "transparent", color: dDone ? "#080808" : "#4ade80", border: "1px solid #4ade80" }}>
                             {dDone ? "✓ LOGGED" : "LOG RUN"}
+                          </button>
+                        </div>
+                      )}
+                      {isRest && dayDeleted(week.id, day.i) && (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="hoverlift" onClick={() => setDeleted(week.id, day.i, false)}
+                            style={{ ...S.display, fontSize: 14, padding: "7px 14px", background: "transparent", color: "#4ade80", border: "1px solid #4ade8066" }}>
+                            RESTORE RUN
                           </button>
                         </div>
                       )}
@@ -2365,3 +2409,4 @@ export default function NYCMarathonPlan() {
     </div>
   );
 }
+
